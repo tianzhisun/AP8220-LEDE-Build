@@ -69,7 +69,7 @@ jobs:
           set -euxo pipefail
           cd openwrt
 
-          cat > .config <<'EOF'
+          cat > .config <<'EOF_CONFIG'
           CONFIG_TARGET_qualcommax=y
           CONFIG_TARGET_qualcommax_ipq807x=y
           CONFIG_TARGET_qualcommax_ipq807x_DEVICE_aliyun_ap8220=y
@@ -87,21 +87,33 @@ jobs:
           CONFIG_PACKAGE_htop=y
           CONFIG_PACKAGE_nano=y
           CONFIG_PACKAGE_curl=y
-          CONFIG_PACKAGE_wget-ssl=y
           CONFIG_PACKAGE_ca-bundle=y
           CONFIG_PACKAGE_ca-certificates=y
 
           CONFIG_PACKAGE_ipq-wifi-aliyun_ap8220=y
+          CONFIG_PACKAGE_libustream-mbedtls20201210=y
+          # CONFIG_PACKAGE_libustream-openssl20201210 is not set
+          # CONFIG_PACKAGE_wget-ssl is not set
+
           CONFIG_CCACHE=y
-          EOF
+          EOF_CONFIG
 
           sed -i 's/^[[:space:]]*//' .config
           make defconfig
 
+          echo "=== selected target ==="
           grep -E "CONFIG_TARGET_qualcommax|CONFIG_TARGET_qualcommax_ipq807x|CONFIG_TARGET_qualcommax_ipq807x_DEVICE_aliyun_ap8220" .config
+
+          echo "=== SSL backend check ==="
+          grep -E "CONFIG_PACKAGE_libustream|CONFIG_PACKAGE_wget-ssl" .config || true
 
           if ! grep -q '^CONFIG_TARGET_qualcommax_ipq807x_DEVICE_aliyun_ap8220=y' .config; then
             echo "ERROR: AP8220 target not selected."
+            exit 1
+          fi
+
+          if grep -q '^CONFIG_PACKAGE_libustream-openssl20201210=y' .config; then
+            echo "ERROR: libustream-openssl is still selected and will conflict with libustream-mbedtls."
             exit 1
           fi
 
@@ -115,11 +127,28 @@ jobs:
       - name: Build firmware
         shell: bash
         run: |
-          set -euxo pipefail
+          set +e
           cd openwrt
-          make -j"$(nproc)" V=s
 
-      - name: Collect firmware
+          echo "=== Parallel build start ==="
+          make -j"$(nproc)" V=s 2>&1 | tee ../build-parallel.log
+          BUILD_STATUS=${PIPESTATUS[0]}
+
+          if [ "$BUILD_STATUS" -ne 0 ]; then
+            echo "=== Parallel build failed. Retry with single job for clear error ==="
+            make -j1 V=s 2>&1 | tee ../build-single.log
+            BUILD_STATUS=${PIPESTATUS[0]}
+          fi
+
+          echo "=== List output files ==="
+          find bin/targets/qualcommax/ipq807x -maxdepth 3 -type f | sort || true
+
+          echo "=== Check firmware images ==="
+          find bin/targets/qualcommax/ipq807x -type f \( -name "*ap8220*.bin" -o -name "*ap8220*.ubi" -o -name "*ap8220*.itb" \) -print || true
+
+          exit "$BUILD_STATUS"
+
+      - name: Collect firmware and logs
         if: always()
         shell: bash
         run: |
@@ -127,6 +156,10 @@ jobs:
           mkdir -p artifact
           cp -rv openwrt/bin/targets/qualcommax/ipq807x artifact/targets || true
           cp openwrt/.config artifact/config.buildinfo || true
+          cp build-parallel.log artifact/ 2>/dev/null || true
+          cp build-single.log artifact/ 2>/dev/null || true
+
+          echo "=== Artifact file list ==="
           find artifact -type f | sort
 
       - name: Upload firmware artifact
