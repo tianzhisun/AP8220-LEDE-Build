@@ -2,10 +2,10 @@ name: Auto Build AP8220 Lean LEDE Release Slim No WiFi
 
 on:
   workflow_dispatch:
-  schedule:
+ #  schedule:
     # UTC time. 19:23 UTC = 03:23 Beijing/Taipei time.
     # Avoid minute 0 because GitHub scheduled workflows can be delayed at peak times.
-    - cron: '23 19 * * *'
+    # - cron: '23 19 * * *'
 
 permissions:
   contents: write
