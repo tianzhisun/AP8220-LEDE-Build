@@ -360,7 +360,7 @@ jobs:
           echo "$SOURCE_SHA" > release-assets/lede-source-commit.txt
 
           cat > release-assets/release-notes.md <<EOF
-          AP8220 Lean LEDE auto build
+          AP8220 Lean LEDE Lite auto build
 
           Source repository: $SOURCE_REPO
           Source commit: $SOURCE_SHA
